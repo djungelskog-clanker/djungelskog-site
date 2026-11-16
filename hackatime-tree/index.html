@@ -5,49 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hackatime file tree</title>
 <style>
-  :root{--bg:#14161a;--card:#1c1f25;--line:#2a2e36;--fg:#e8e6e1;--dim:#8d929c;--acc:#f5c542;--bar:#f5c54233;--bar2:#f5c542aa;--err:#ff7a7a}
+  @font-face{font-family:"Rubik";src:url("fonts/rubik-latin-wght-normal.woff2") format("woff2");font-weight:300 900;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:"Rubik";src:url("fonts/rubik-latin-ext-wght-normal.woff2") format("woff2");font-weight:300 900;font-display:swap;unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+  @font-face{font-family:"IBM Plex Mono";src:url("fonts/ibm-plex-mono-var-roman.woff2") format("woff2-variations");font-weight:200 800;font-display:swap}
+
+  :root{
+    --hue-primary:355;
+    --hue-danger:25;
+    --color-canvas:oklch(98% 0.01 var(--hue-primary));
+    --color-surface:oklch(100% 0 var(--hue-primary));
+    --color-ink:oklch(20% 0.02 var(--hue-primary));
+    --color-muted:oklch(55% 0.02 var(--hue-primary));
+    --color-border:oklch(90% 0.02 var(--hue-primary));
+    --color-accent:oklch(52% 0.19 var(--hue-primary));
+    --color-on-accent:oklch(99% 0 0);
+    --color-danger:oklch(52% 0.22 var(--hue-danger));
+    --color-surface-hover:color-mix(in oklch,var(--color-surface),var(--color-ink) 5%);
+    --radius:.5rem;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --color-canvas:oklch(16% 0.006 var(--hue-primary));
+      --color-surface:oklch(19% 0.008 var(--hue-primary));
+      --color-ink:oklch(92% 0.006 var(--hue-primary));
+      --color-muted:oklch(68% 0.01 var(--hue-primary));
+      --color-border:oklch(26% 0.01 var(--hue-primary));
+      --color-accent:oklch(74% 0.12 var(--hue-primary));
+      --color-on-accent:oklch(18% 0.02 var(--hue-primary));
+      --color-danger:oklch(70% 0.14 var(--hue-danger));
+    }
+  }
+
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 ui-sans-serif,system-ui,sans-serif}
-  main{max-width:920px;margin:0 auto;padding:32px 18px 80px}
-  h1{font-size:22px;margin:0 0 4px}
-  .sub{color:var(--dim);margin:0 0 24px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
-  label{display:block;font-size:13px;color:var(--dim);margin-bottom:6px}
-  input,select,button{font:inherit;color:var(--fg);background:#101216;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  body{margin:0;background:var(--color-canvas);color:var(--color-ink);font:15px/1.5 "Rubik",ui-sans-serif,system-ui,sans-serif;overscroll-behavior:none}
+  main{max-width:880px;margin:0 auto;padding:40px 16px 80px}
+  h1{font-size:1.4rem;font-weight:600;margin:0 0 .25rem}
+  a{color:var(--color-accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .sub{color:var(--color-muted);margin:0 0 1.5rem}
+  .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:1rem;margin-bottom:.75rem}
+  label{display:block;font-size:.8rem;color:var(--color-muted);margin-bottom:.35rem}
+  input,select,button{font:inherit;color:var(--color-ink);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:.5rem .6rem}
   input[type=password],input[type=text],select{width:100%}
-  button{cursor:pointer;background:var(--acc);color:#1a1a1a;border:0;font-weight:600}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--color-accent);outline-offset:1px}
+  input[type=file]{width:100%;color:var(--color-muted);font-size:.85rem}
+  input[type=file]::file-selector-button{font:inherit;color:var(--color-ink);background:var(--color-canvas);border:0;border-radius:var(--radius);padding:.3rem .6rem;margin-right:.6rem;cursor:pointer}
+  input[type=checkbox]{accent-color:var(--color-accent)}
+  button{cursor:pointer;display:inline-flex;align-items:center;gap:.5rem;white-space:nowrap}
+  button:hover{background:var(--color-surface-hover)}
+  button:active{background:var(--color-border)}
   button:disabled{opacity:.5;cursor:default}
-  button.ghost{background:#101216;color:var(--fg);border:1px solid var(--line);font-weight:400}
-  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  button.primary{background:var(--color-accent);color:var(--color-on-accent);border-color:transparent;font-weight:500}
+  button.primary:hover{background:color-mix(in oklch,var(--color-accent),var(--color-ink) 10%)}
+  .row{display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap}
   .row>div{flex:1;min-width:180px}
-  .note{font-size:12.5px;color:var(--dim);margin-top:8px}
-  .err{color:var(--err)}
+  .note{font-size:.78rem;color:var(--color-muted);margin-top:.5rem}
+  .err{color:var(--color-danger)}
   .hidden{display:none}
-  .progress{height:6px;background:#101216;border-radius:4px;overflow:hidden;margin-top:10px}
-  .progress i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s}
-  .stats{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px}
-  .stat b{display:block;font-size:20px}
-  .stat span{font-size:12px;color:var(--dim)}
-  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .progress{height:4px;background:var(--color-border);border-radius:var(--radius);overflow:hidden;margin-top:.75rem}
+  .progress i{display:block;height:100%;width:0;background:var(--color-accent);transition:width .15s}
+  .stats{display:flex;gap:1.75rem;flex-wrap:wrap;margin-bottom:.75rem}
+  .stat b{display:block;font-size:1.25rem;font-weight:600}
+  .stat span{font-size:.75rem;color:var(--color-muted)}
+  .tools{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem}
   .tools input{flex:1;min-width:160px}
-  .tree{font:13.5px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace}
-  .node{position:relative;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;white-space:nowrap}
-  .node:hover{background:#ffffff0a}
-  .node .bg{position:absolute;left:0;top:0;bottom:0;background:var(--bar);border-radius:6px;z-index:0;pointer-events:none}
+  .tree{font:.82rem/1.35 "IBM Plex Mono",ui-monospace,monospace;margin:0 -.25rem}
+  .node{position:relative;display:flex;align-items:center;gap:.4rem;padding:.2rem .4rem;border-radius:var(--radius);white-space:nowrap}
+  .node:hover{background:var(--color-surface-hover)}
+  .node .bg{position:absolute;left:0;top:0;bottom:0;background:color-mix(in oklch,var(--color-surface),var(--color-accent) 14%);border-radius:var(--radius);z-index:0;pointer-events:none}
   .node>*{position:relative;z-index:1}
   .node.dir{cursor:pointer}
-  .caret{width:12px;color:var(--dim);display:inline-block;text-align:center}
+  .caret{width:.8rem;color:var(--color-muted);display:inline-block;text-align:center}
   .name{overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .dir .name{color:var(--acc)}
-  .lang{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:10px;padding:0 6px}
+  .dir .name{color:var(--color-accent);font-weight:500}
+  .lang{font-size:.68rem;color:var(--color-muted);background:var(--color-canvas);border-radius:var(--radius);padding:0 .4rem}
   .spacer{flex:1}
-  .t{color:var(--fg)}
-  .pct{color:var(--dim);width:48px;text-align:right}
-  .kids{margin-left:14px;border-left:1px solid var(--line);padding-left:4px}
-  .share{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
-  .empty{color:var(--dim);padding:12px}
-  .langs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-  .chip{font-size:12px;background:#101216;border:1px solid var(--line);border-radius:12px;padding:1px 9px}
+  .pct{color:var(--color-muted);width:3rem;text-align:right}
+  .kids{margin-left:.9rem;border-left:1px solid var(--color-border);padding-left:.25rem}
+  .empty{color:var(--color-muted);padding:.75rem}
+  .langs{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.75rem}
+  .chip{font-size:.75rem;background:var(--color-canvas);border-radius:var(--radius);padding:.1rem .55rem}
+  .share{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.9rem}
 </style>
 </head>
 <body>
@@ -61,9 +100,9 @@
         <label for="key">hackatime api key</label>
         <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="paste your key">
       </div>
-      <button id="connect">load projects</button>
+      <button class="primary" id="connect">load projects</button>
     </div>
-    <label style="margin-top:10px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="remember" style="width:auto"> remember the key in this browser (localStorage)</label>
+    <label style="margin-top:.6rem;display:flex;gap:.4rem;align-items:center"><input type="checkbox" id="remember" style="width:auto"> remember the key in this browser (localStorage)</label>
     <div class="note">your key is only sent to hackatime.hackclub.com, straight from your browser. nothing goes through any other server. find it in hackatime settings.</div>
     <div class="note err" id="err"></div>
   </div>
@@ -88,14 +127,14 @@
           <option value="365" selected>last 365 days</option>
         </select>
       </div>
-      <button id="go">show tree</button>
+      <button class="primary" id="go">show tree</button>
     </div>
     <div class="progress hidden" id="prog"><i></i></div>
     <div class="note" id="status"></div>
   </div>
 
   <div class="card hidden" id="result">
-    <div class="note hidden" id="sharedbanner" style="margin:0 0 12px">shared view of <b id="sharedname"></b>. this is a snapshot, nothing here is live. <a href="./" style="color:var(--acc)">make your own</a></div>
+    <div class="note hidden" id="sharedbanner" style="margin:0 0 .75rem">shared view of <b id="sharedname"></b>. this is a snapshot, nothing here is live. <a href="./" >make your own</a></div>
     <div class="stats" id="stats"></div>
     <div class="langs" id="langs"></div>
     <div class="tools">
@@ -106,7 +145,7 @@
     </div>
     <div class="tree" id="tree"></div>
     <div id="sharecard" class="share">
-      <button id="share">copy share link</button>
+      <button class="primary" id="share">copy share link</button>
       <button class="ghost" id="dl">download .json</button>
       <span class="note" id="sharemsg" style="margin:0"></span>
     </div>
