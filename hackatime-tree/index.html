@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hackatime file tree</title>
+<style>
+  :root{--bg:#14161a;--card:#1c1f25;--line:#2a2e36;--fg:#e8e6e1;--dim:#8d929c;--acc:#f5c542;--bar:#f5c54233;--bar2:#f5c542aa;--err:#ff7a7a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 ui-sans-serif,system-ui,sans-serif}
+  main{max-width:920px;margin:0 auto;padding:32px 18px 80px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  label{display:block;font-size:13px;color:var(--dim);margin-bottom:6px}
+  input,select,button{font:inherit;color:var(--fg);background:#101216;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  input[type=password],input[type=text],select{width:100%}
+  button{cursor:pointer;background:var(--acc);color:#1a1a1a;border:0;font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:#101216;color:var(--fg);border:1px solid var(--line);font-weight:400}
+  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .row>div{flex:1;min-width:180px}
+  .note{font-size:12.5px;color:var(--dim);margin-top:8px}
+  .err{color:var(--err)}
+  .hidden{display:none}
+  .progress{height:6px;background:#101216;border-radius:4px;overflow:hidden;margin-top:10px}
+  .progress i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s}
+  .stats{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px}
+  .stat b{display:block;font-size:20px}
+  .stat span{font-size:12px;color:var(--dim)}
+  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .tools input{flex:1;min-width:160px}
+  .tree{font:13.5px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .node{position:relative;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;white-space:nowrap}
+  .node:hover{background:#ffffff0a}
+  .node .bg{position:absolute;left:0;top:0;bottom:0;background:var(--bar);border-radius:6px;z-index:0;pointer-events:none}
+  .node>*{position:relative;z-index:1}
+  .node.dir{cursor:pointer}
+  .caret{width:12px;color:var(--dim);display:inline-block;text-align:center}
+  .name{overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .dir .name{color:var(--acc)}
+  .lang{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:10px;padding:0 6px}
+  .spacer{flex:1}
+  .t{color:var(--fg)}
+  .pct{color:var(--dim);width:48px;text-align:right}
+  .kids{margin-left:14px;border-left:1px solid var(--line);padding-left:4px}
+  .empty{color:var(--dim);padding:12px}
+  .langs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .chip{font-size:12px;background:#101216;border:1px solid var(--line);border-radius:12px;padding:1px 9px}
+</style>
+</head>
+<body>
+<main>
+  <h1>hackatime file tree</h1>
+  <p class="sub">pick a project, see where your time actually went, file by file.</p>
+
+  <div class="card" id="keycard">
+    <div class="row">
+      <div>
+        <label for="key">hackatime api key</label>
+        <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="paste your key">
+      </div>
+      <button id="connect">load projects</button>
+    </div>
+    <label style="margin-top:10px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="remember" style="width:auto"> remember the key in this browser (localStorage)</label>
+    <div class="note">your key is only sent to hackatime.hackclub.com, straight from your browser. nothing goes through any other server. find it in hackatime settings.</div>
+    <div class="note err" id="err"></div>
+  </div>
+
+  <div class="card hidden" id="pickcard">
+    <div class="row">
+      <div>
+        <label for="proj">project</label>
+        <select id="proj"></select>
+      </div>
+      <div style="max-width:200px">
+        <label for="range">range</label>
+        <select id="range">
+          <option value="30">last 30 days</option>
+          <option value="90">last 90 days</option>
+          <option value="180">last 180 days</option>
+          <option value="365" selected>last 365 days</option>
+        </select>
+      </div>
+      <button id="go">show tree</button>
+    </div>
+    <div class="progress hidden" id="prog"><i></i></div>
+    <div class="note" id="status"></div>
+  </div>
+
+  <div class="card hidden" id="result">
+    <div class="stats" id="stats"></div>
+    <div class="langs" id="langs"></div>
+    <div class="tools">
+      <input type="text" id="filter" placeholder="filter files...">
+      <select id="sort" style="width:auto"><option value="time">sort by time</option><option value="name">sort by name</option></select>
+      <button class="ghost" id="expand">expand all</button>
+      <button class="ghost" id="collapse">collapse all</button>
+    </div>
+    <div class="tree" id="tree"></div>
+    <div class="note">time per file = gap to the next heartbeat (capped at 2 minutes, like hackatime does), attributed to the file you were in.</div>
+  </div>
+</main>
+
+<script>
+const API = 'https://hackatime.hackclub.com';
+const TIMEOUT = 120; // seconds, heartbeat gap cap
+const $ = id => document.getElementById(id);
+let KEY = '';
+let projects = [];
+let activeDays = {}; // project -> [date strings]
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => {
+  s = Math.round(s);
+  if (s < 60) return s + 's';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(s % 60).padStart(2, '0')}s`;
+};
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+async function api(path) {
+  const r = await fetch(API + path, { headers: { Authorization: 'Bearer ' + KEY } });
+  if (r.status === 401 || r.status === 403) throw new Error('hackatime rejected the key (' + r.status + ')');
+  if (r.status === 429) { await new Promise(res => setTimeout(res, 1500)); return api(path); }
+  if (!r.ok) throw new Error('hackatime returned ' + r.status + ' for ' + path.split('?')[0]);
+  return r.json();
+}
+
+// ---------- step 1: projects ----------
+async function loadProjects() {
+  $('err').textContent = '';
+  KEY = $('key').value.trim();
+  if (!KEY) { $('err').textContent = 'paste a key first'; return; }
+  $('connect').disabled = true; $('connect').textContent = 'loading...';
+  try {
+    const end = new Date(), start = new Date(Date.now() - 365 * 864e5);
+    // summaries are cheap and tell us which project was active on which day
+    const j = await api(`/api/hackatime/v1/users/current/summaries?start=${ymd(start)}&end=${ymd(end)}`);
+    const tot = {}; activeDays = {};
+    for (const day of j.data || []) {
+      const date = day.range && day.range.date;
+      for (const p of day.projects || []) {
+        if (!p.name || !p.total_seconds) continue;
+        tot[p.name] = (tot[p.name] || 0) + p.total_seconds;
+        (activeDays[p.name] ||= []).push({ date, seconds: p.total_seconds });
+      }
+    }
+    projects = Object.entries(tot).sort((a, b) => b[1] - a[1]);
+    if (!projects.length) throw new Error('no projects with time in the last year');
+    $('proj').innerHTML = projects.map(([n, s]) => `<option value="${esc(n)}">${esc(n)} (${fmt(s)})</option>`).join('');
+    $('pickcard').classList.remove('hidden');
+    if ($('remember').checked) localStorage.setItem('hackatime-tree-key', KEY); else localStorage.removeItem('hackatime-tree-key');
+  } catch (e) {
+    $('err').textContent = e.message + (e instanceof TypeError ? ' (network or cors problem)' : '');
+  } finally {
+    $('connect').disabled = false; $('connect').textContent = 'load projects';
+  }
+}
+
+// ---------- step 2: heartbeats -> durations ----------
+async function build() {
+  const name = $('proj').value;
+  const days = +$('range').value;
+  const cutoff = ymd(new Date(Date.now() - days * 864e5));
+  const wanted = (activeDays[name] || []).filter(d => d.date >= cutoff).map(d => d.date).sort();
+  if (!wanted.length) { $('status').textContent = 'no time for that project in this range'; return; }
+
+  // fetch one window per ~3 active days to keep request count down
+  const groups = [];
+  for (const d of wanted) {
+    const last = groups[groups.length - 1];
+    if (last && (new Date(d) - new Date(last[last.length - 1])) <= 864e5 && last.length < 3) last.push(d);
+    else groups.push([d]);
+  }
+  $('go').disabled = true; $('prog').classList.remove('hidden'); $('result').classList.add('hidden');
+  const bar = $('prog').firstElementChild; bar.style.width = '0';
+  const byId = new Map();
+  let done = 0;
+  try {
+    const queue = groups.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const g = queue.shift();
+        const s = new Date(g[0] + 'T00:00:00'), e = new Date(g[g.length - 1] + 'T00:00:00');
+        const from = new Date(s.getTime() - 864e5), to = new Date(e.getTime() + 2 * 864e5);
+        const j = await api(`/api/v1/my/heartbeats?start_time=${encodeURIComponent(from.toISOString())}&end_time=${encodeURIComponent(to.toISOString())}`);
+        for (const h of j.heartbeats || []) byId.set(h.id ?? `${h.time}-${h.entity}`, h);
+        done++; bar.style.width = (done / groups.length * 100) + '%';
+        $('status').textContent = `fetched ${done}/${groups.length} windows, ${byId.size} heartbeats`;
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+  } catch (e) {
+    $('status').innerHTML = '<span class="err">' + esc(e.message) + '</span>';
+    $('go').disabled = false; return;
+  }
+
+  // durations across ALL heartbeats (so gaps are right), then keep this project's
+  const all = [...byId.values()].filter(h => h.time != null).sort((a, b) => a.time - b.time);
+  const files = new Map(); // entity -> {seconds, lang}
+  const cutoffT = new Date(cutoff + 'T00:00:00').getTime() / 1000;
+  for (let i = 0; i < all.length; i++) {
+    const h = all[i];
+    if (h.project !== name || h.time < cutoffT) continue;
+    const next = all[i + 1];
+    const gap = next ? Math.min(next.time - h.time, TIMEOUT) : 0;
+    const key = h.entity || '(unknown)';
+    const f = files.get(key) || { seconds: 0, lang: h.language, type: h.type, beats: 0 };
+    f.seconds += gap; f.beats++;
+    if (!f.lang && h.language) f.lang = h.language;
+    files.set(key, f);
+  }
+  $('go').disabled = false; $('prog').classList.add('hidden');
+  if (!files.size) { $('status').textContent = 'got heartbeats but none matched this project'; return; }
+  $('status').textContent = '';
+  render(name, files);
+}
+
+// ---------- step 3: tree ----------
+let ROOT = null, TOTAL = 0;
+
+function buildTree(files) {
+  const entries = [...files.entries()];
+  const split = e => e.replace(/\\/g, '/').split('/').filter(Boolean);
+  const fileEntries = entries.filter(([, f]) => f.type !== 'app');
+  const appEntries = entries.filter(([, f]) => f.type === 'app');
+  // strip the shared prefix, then also drop anything above the project folder
+  let prefix = [];
+  if (fileEntries.length) {
+    const parts = fileEntries.map(([e]) => split(e));
+    prefix = parts[0].slice(0, -1);
+    for (const p of parts) { let i = 0; while (i < prefix.length && i < p.length - 1 && prefix[i] === p[i]) i++; prefix = prefix.slice(0, i); }
+  }
+  const root = { name: '', dirs: new Map(), files: [], seconds: 0 };
+  const add = (path, f, full) => {
+    let n = root; n.seconds += f.seconds;
+    for (const seg of path.slice(0, -1)) {
+      let c = n.dirs.get(seg);
+      if (!c) { c = { name: seg, dirs: new Map(), files: [], seconds: 0 }; n.dirs.set(seg, c); }
+      c.seconds += f.seconds; n = c;
+    }
+    n.files.push({ name: path[path.length - 1], seconds: f.seconds, lang: f.lang, full });
+  };
+  for (const [e, f] of fileEntries) add(split(e).slice(prefix.length), f, e);
+  for (const [e, f] of appEntries) add(['(apps)', e], f, e);
+  return { root, prefix };
+}
+
+function render(name, files) {
+  const { root, prefix } = buildTree(files);
+  ROOT = root; TOTAL = root.seconds;
+  const langs = {};
+  for (const f of files.values()) if (f.lang) langs[f.lang] = (langs[f.lang] || 0) + f.seconds;
+  $('stats').innerHTML = [
+    [fmt(TOTAL), 'total time'], [files.size, 'files'],
+    [countDirs(root), 'folders'], [prefix.length ? '/' + prefix.slice(-2).join('/') : '/', 'project root (guessed)']
+  ].map(([b, s]) => `<div class="stat"><b>${esc(b)}</b><span>${s}</span></div>`).join('');
+  $('langs').innerHTML = Object.entries(langs).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([l, s]) => `<span class="chip">${esc(l)} ${Math.round(s / TOTAL * 100)}%</span>`).join('');
+  $('filter').value = '';
+  draw();
+  $('result').classList.remove('hidden');
+  $('result').scrollIntoView({ behavior: 'smooth' });
+}
+const countDirs = n => { let c = 0; for (const d of n.dirs.values()) c += 1 + countDirs(d); return c; };
+
+const open = new Set(); // paths of expanded dirs
+
+function matches(node, q) {
+  if (!q) return true;
+  for (const f of node.files) if (f.full.toLowerCase().includes(q)) return true;
+  for (const d of node.dirs.values()) if (matches(d, q)) return true;
+  return false;
+}
+
+function drawNode(node, path, q, sort, maxSec) {
+  const items = [];
+  for (const d of node.dirs.values()) if (matches(d, q)) items.push({ dir: true, n: d });
+  for (const f of node.files) if (!q || f.full.toLowerCase().includes(q)) items.push({ dir: false, n: f });
+  items.sort(sort === 'name'
+    ? (a, b) => (b.dir - a.dir) || a.n.name.localeCompare(b.n.name)
+    : (a, b) => b.n.seconds - a.n.seconds);
+  let html = '';
+  for (const it of items) {
+    const n = it.n, w = Math.max(0.5, n.seconds / maxSec * 100).toFixed(1);
+    const pct = TOTAL ? (n.seconds / TOTAL * 100) : 0;
+    const pctS = pct >= 1 ? pct.toFixed(0) + '%' : pct.toFixed(1) + '%';
+    if (it.dir) {
+      // collapse chains of single-child dirs into one row (a/b/c)
+      let label = n.name, cur = n, p = path + '/' + n.name;
+      while (cur.dirs.size === 1 && cur.files.length === 0) { cur = [...cur.dirs.values()][0]; label += '/' + cur.name; p += '/' + cur.name; }
+      const isOpen = q ? true : open.has(p);
+      html += `<div class="node dir" data-p="${esc(p)}"><span class="bg" style="width:${w}%"></span><span class="caret">${isOpen ? '&#9662;' : '&#9656;'}</span><span class="name">${esc(label)}/</span><span class="spacer"></span><span class="t">${fmt(cur.seconds)}</span><span class="pct">${pctS}</span></div>`;
+      if (isOpen) html += `<div class="kids">${drawNode(cur, p, q, sort, maxSec)}</div>`;
+    } else {
+      html += `<div class="node file" title="${esc(n.full)}"><span class="bg" style="width:${w}%"></span><span class="caret"></span><span class="name">${esc(n.name)}</span>${n.lang ? `<span class="lang">${esc(n.lang)}</span>` : ''}<span class="spacer"></span><span class="t">${fmt(n.seconds)}</span><span class="pct">${pctS}</span></div>`;
+    }
+  }
+  return html || '<div class="empty">nothing here</div>';
+}
+
+function draw() {
+  const q = $('filter').value.trim().toLowerCase();
+  const max = Math.max(1, ...[...ROOT.dirs.values()].map(d => d.seconds), ...ROOT.files.map(f => f.seconds));
+  $('tree').innerHTML = drawNode(ROOT, '', q, $('sort').value, max);
+}
+
+function allDirPaths(node, path, out) {
+  for (const d of node.dirs.values()) { const p = path + '/' + d.name; out.push(p); allDirPaths(d, p, out); }
+  return out;
+}
+
+$('tree').addEventListener('click', e => {
+  const el = e.target.closest('.node.dir'); if (!el) return;
+  const p = el.dataset.p;
+  open.has(p) ? open.delete(p) : open.add(p);
+  draw();
+});
+$('filter').addEventListener('input', draw);
+$('sort').addEventListener('change', draw);
+$('expand').addEventListener('click', () => { allDirPaths(ROOT, '', []).forEach(p => open.add(p)); draw(); });
+$('collapse').addEventListener('click', () => { open.clear(); draw(); });
+$('connect').addEventListener('click', loadProjects);
+$('key').addEventListener('keydown', e => { if (e.key === 'Enter') loadProjects(); });
+$('go').addEventListener('click', () => { open.clear(); build(); });
+const saved = localStorage.getItem('hackatime-tree-key');
+if (saved) { $('key').value = saved; $('remember').checked = true; }
+</script>
+</body>
+</html>
