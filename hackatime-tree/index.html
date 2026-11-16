@@ -44,6 +44,7 @@
   .t{color:var(--fg)}
   .pct{color:var(--dim);width:48px;text-align:right}
   .kids{margin-left:14px;border-left:1px solid var(--line);padding-left:4px}
+  .share{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
   .empty{color:var(--dim);padding:12px}
   .langs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
   .chip{font-size:12px;background:#101216;border:1px solid var(--line);border-radius:12px;padding:1px 9px}
@@ -65,6 +66,11 @@
     <label style="margin-top:10px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="remember" style="width:auto"> remember the key in this browser (localStorage)</label>
     <div class="note">your key is only sent to hackatime.hackclub.com, straight from your browser. nothing goes through any other server. find it in hackatime settings.</div>
     <div class="note err" id="err"></div>
+  </div>
+
+  <div class="card" id="importcard">
+    <label for="imp">got a shared .json file instead? open it here (links open on their own)</label>
+    <input type="file" id="imp" accept=".json,application/json">
   </div>
 
   <div class="card hidden" id="pickcard">
@@ -89,6 +95,7 @@
   </div>
 
   <div class="card hidden" id="result">
+    <div class="note hidden" id="sharedbanner" style="margin:0 0 12px">shared view of <b id="sharedname"></b>. this is a snapshot, nothing here is live. <a href="./" style="color:var(--acc)">make your own</a></div>
     <div class="stats" id="stats"></div>
     <div class="langs" id="langs"></div>
     <div class="tools">
@@ -98,6 +105,12 @@
       <button class="ghost" id="collapse">collapse all</button>
     </div>
     <div class="tree" id="tree"></div>
+    <div id="sharecard" class="share">
+      <button id="share">copy share link</button>
+      <button class="ghost" id="dl">download .json</button>
+      <span class="note" id="sharemsg" style="margin:0"></span>
+    </div>
+    <div class="note">sharing sends nothing to a server: the link itself contains the tree (relative file paths, times, languages). anyone with the link can read it, so only share projects you are fine showing. your key is never included.</div>
     <div class="note">time per file = gap to the next heartbeat (capped at 2 minutes, like hackatime does), attributed to the file you were in.</div>
   </div>
 </main>
@@ -220,14 +233,14 @@ async function build() {
 // ---------- step 3: tree ----------
 let ROOT = null, TOTAL = 0;
 
-function buildTree(files) {
+function buildTree(files, noStrip) {
   const entries = [...files.entries()];
   const split = e => e.replace(/\\/g, '/').split('/').filter(Boolean);
   const fileEntries = entries.filter(([, f]) => f.type !== 'app');
   const appEntries = entries.filter(([, f]) => f.type === 'app');
   // strip the shared prefix, then also drop anything above the project folder
   let prefix = [];
-  if (fileEntries.length) {
+  if (fileEntries.length && !noStrip) {
     const parts = fileEntries.map(([e]) => split(e));
     prefix = parts[0].slice(0, -1);
     for (const p of parts) { let i = 0; while (i < prefix.length && i < p.length - 1 && prefix[i] === p[i]) i++; prefix = prefix.slice(0, i); }
@@ -244,17 +257,24 @@ function buildTree(files) {
   };
   for (const [e, f] of fileEntries) add(split(e).slice(prefix.length), f, e);
   for (const [e, f] of appEntries) add(['(apps)', e], f, e);
-  return { root, prefix };
+  return { root, prefix, split };
 }
 
-function render(name, files) {
-  const { root, prefix } = buildTree(files);
+let CUR = null; // {name, files:[[relpath,seconds,lang]]}
+function render(name, files, shared) {
+  const { root, prefix, split } = buildTree(files, shared);
   ROOT = root; TOTAL = root.seconds;
+  CUR = { name, files: [...files.entries()].map(([e, f]) => [
+    f.type === 'app' ? '(apps)/' + e : split(e).slice(prefix.length).join('/'), Math.round(f.seconds), f.lang || ''
+  ]) };
+  $('sharecard').classList.toggle('hidden', !!shared);
+  $('sharedbanner').classList.toggle('hidden', !shared);
+  if (shared) $('sharedname').textContent = name;
   const langs = {};
   for (const f of files.values()) if (f.lang) langs[f.lang] = (langs[f.lang] || 0) + f.seconds;
   $('stats').innerHTML = [
     [fmt(TOTAL), 'total time'], [files.size, 'files'],
-    [countDirs(root), 'folders'], [prefix.length ? '/' + prefix.slice(-2).join('/') : '/', 'project root (guessed)']
+    [countDirs(root), 'folders']
   ].map(([b, s]) => `<div class="stat"><b>${esc(b)}</b><span>${s}</span></div>`).join('');
   $('langs').innerHTML = Object.entries(langs).sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([l, s]) => `<span class="chip">${esc(l)} ${Math.round(s / TOTAL * 100)}%</span>`).join('');
@@ -324,6 +344,51 @@ $('collapse').addEventListener('click', () => { open.clear(); draw(); });
 $('connect').addEventListener('click', loadProjects);
 $('key').addEventListener('keydown', e => { if (e.key === 'Enter') loadProjects(); });
 $('go').addEventListener('click', () => { open.clear(); build(); });
+// ---------- sharing ----------
+const b64u = u8 => { let s = ''; for (const b of u8) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+async function pipe(u8, stream) {
+  const out = new Response(new Blob([u8]).stream().pipeThrough(stream));
+  return new Uint8Array(await out.arrayBuffer());
+}
+async function encodeShare(obj) {
+  const raw = new TextEncoder().encode(JSON.stringify({ v: 1, n: obj.name, f: obj.files }));
+  return b64u(await pipe(raw, new CompressionStream('deflate-raw')));
+}
+async function decodeShare(tok) {
+  const raw = await pipe(unb64u(tok), new DecompressionStream('deflate-raw'));
+  return JSON.parse(new TextDecoder().decode(raw));
+}
+function showShared(d) {
+  if (!d || d.v !== 1 || !Array.isArray(d.f)) throw new Error('not a share file');
+  const files = new Map();
+  for (const [p, s, l] of d.f) files.set(String(p), { seconds: +s || 0, lang: l || null, type: 'file' });
+  if (!files.size) throw new Error('empty share');
+  open.clear();
+  render(String(d.n || 'shared project'), files, true);
+}
+$('share').addEventListener('click', async () => {
+  if (!CUR) return;
+  const url = location.origin + location.pathname + '#s=' + await encodeShare(CUR);
+  try { await navigator.clipboard.writeText(url); $('sharemsg').textContent = `copied (${url.length} chars)` + (url.length > 8000 ? ', long: some apps may cut it, use the .json instead' : ''); }
+  catch { prompt('copy this link', url); }
+});
+$('dl').addEventListener('click', () => {
+  if (!CUR) return;
+  const blob = new Blob([JSON.stringify({ v: 1, n: CUR.name, f: CUR.files })], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = CUR.name.replace(/[^\w.-]+/g, '_') + '.hackatime-tree.json'; a.click();
+});
+$('imp').addEventListener('change', async e => {
+  try { showShared(JSON.parse(await e.target.files[0].text())); } catch (er) { $('err').textContent = 'could not read that file: ' + er.message; }
+});
+async function loadFromHash() {
+  const m = location.hash.match(/^#s=(.+)$/); if (!m) return;
+  try { showShared(await decodeShare(m[1])); $('keycard').classList.add('hidden'); $('importcard').classList.add('hidden'); }
+  catch (er) { $('err').textContent = 'this share link looks broken: ' + er.message; }
+}
+window.addEventListener('hashchange', loadFromHash);
+loadFromHash();
 const saved = localStorage.getItem('hackatime-tree-key');
 if (saved) { $('key').value = saved; $('remember').checked = true; }
 </script>
